@@ -392,7 +392,7 @@ disableRepo() {
 # Wait 20 seconds for OpenNMS to start.
 waitForStart() {
   echo -n "🛌 Wait for the Web UI (timeout 2m)      ... "
-  timeout 180s bash -c 'until curl -f -I -L http://${IP_ADDRESS}:8980; do sleep 1; done' 1>/dev/null 2>/dev/null
+  timeout 180s bash -c "until curl -f -I -L http://${IP_ADDRESS}:8980; do sleep 1; done" 1>/dev/null 2>/dev/null
   checkError "${?}"
 }
 
