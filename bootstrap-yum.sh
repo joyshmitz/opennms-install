@@ -19,8 +19,8 @@ RED="\e[31m"
 GREEN="\e[32m"
 YELLOW="\e[33m"
 ENDCOLOR="\e[0m"
-REQUIRED_SYSTEMS="CentOS.*9|Red\\sHat.*9|Rocky.*[9]|AlmaLinux.*[9]"
-REQUIRED_JDK="java-17-openjdk-devel"
+REQUIRED_SYSTEMS="CentOS.*10"
+REQUIRED_JDK="17"
 RELEASE_FILE="/etc/redhat-release"
 PSQL_MAX_VERSION=15
 IP_ADDRESS=$(hostname -I | awk '{print $1}') # export the address so it can also be used in the timeout command
@@ -223,8 +223,17 @@ EOF
 ####
 # Install OpenJDK Development kit
 installJdk() {
+  echo -n "📦 Adding Adoptium Repo               ... "
+  cat <<EOF | sudo tee /etc/yum.repos.d/adoptium.repo > /dev/null
+  [Adoptium]
+  name=Adoptium
+  baseurl=https://packages.adoptium.net/artifactory/rpm/${DISTRIBUTION_NAME:-$(. /etc/os-release; echo $ID)}/\$releasever/\$basearch
+  enabled=1
+  gpgcheck=1
+  gpgkey=https://packages.adoptium.net/artifactory/api/gpg/key/public
+  EOF
   echo -n "📦 Install OpenJDK Development Kit       ... "
-  sudo dnf install -y ${REQUIRED_JDK} 1>>"${ERROR_LOG}" 2>>"${ERROR_LOG}"
+  sudo dnf -y install temurin-"${REQUIRED_JDK}"-jdk 1>>"${ERROR_LOG}" 2>>"${ERROR_LOG}"
   checkError "${?}"
 }
 
@@ -232,10 +241,7 @@ installJdk() {
 # Install the PostgreSQL database
 installPostgres() {
   echo "📦 Add PostgreSQL repository             ... "
-  sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-  checkError "${?}"
-  echo -n "📦 Disable the built-in PostgreSQL       ... "
-  sudo dnf -qy module disable postgresql
+  sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm
   checkError "${?}"
   echo -n "📦 Install PostgreSQL ${PSQL_MAX_VERSION} database        ... "
   sudo dnf install -y postgresql${PSQL_MAX_VERSION}-server 1>>"${ERROR_LOG}" 2>>"${ERROR_LOG}"
@@ -246,15 +252,15 @@ installPostgres() {
 # Install OpenNMS rpm repository for specific release
 installOnmsRepo() {
   echo "📦 Install OpenNMS Repository            ... "
-  curl -1sLf 'https://packages.opennms.com/public/stable/setup.rpm.sh' | sudo -E bash
-  curl -1sLf 'https://packages.opennms.com/public/common/setup.rpm.sh' | sudo -E bash
+  sudo dnf -y install https://yum.opennms.org/repofiles/opennms-repo-stable-rhel9.noarch.rpm
+  sudo sed -i 's/gpgcheck=1/gpgcheck=0/g' /etc/yum.repos.d/opennms-repo-stable-rhel9.repo
 }
 
 ####
 # Install the OpenNMS application from rpm repository
 installOnmsApp() {
   echo -n "📦 Install OpenNMS Horizon packages      ... "
-  sudo dnf -y install rrdtool jrrd2 jicmp jicmp6 opennms-core opennms-webapp-jetty opennms-webapp-hawtio 1>>"${ERROR_LOG}" 2>>${ERROR_LOG}
+  sudo dnf -y install opennms  1>>"${ERROR_LOG}" 2>>${ERROR_LOG}
   sudo -u opennms "${OPENNMS_HOME}"/bin/runjava -s 1>>"${ERROR_LOG}" 2>>${ERROR_LOG}
   checkError "${?}"
 }
@@ -385,7 +391,7 @@ lockdownDbUser() {
 # Disable the repo and lock the versions. 
 disableRepo() {
   echo -n "👮 Disabling autoupdates                 ... "
-  sudo dnf config-manager --disable opennms-common opennms-stable
+  sudo dnf config-manager --disable opennms-repo-stable-*
   checkError "${?}"
 }
 
@@ -431,3 +437,4 @@ echo "Select in the main navigation \"Admin\" and go to \"Change Password\""
 echo ""
 echo "🦄 Thank you for computing with us. ✨"
 echo ""
+
