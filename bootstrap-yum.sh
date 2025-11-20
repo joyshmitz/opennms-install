@@ -19,9 +19,11 @@ RED="\e[31m"
 GREEN="\e[32m"
 YELLOW="\e[33m"
 ENDCOLOR="\e[0m"
-REQUIRED_SYSTEMS="CentOS.*9|Red\\sHat.*9|Rocky.*[9]|AlmaLinux.*[9]"
-REQUIRED_JDK="java-17-openjdk-devel"
+SUPPORTED_DISTROS="RHEL 9/10, CentOS 9/10, Rocky 9/10, Alma 9/10"
+REQUIRED_SYSTEMS="^(Red Hat Enterprise Linux|Rocky Linux|CentOS Stream|AlmaLinux) release 9([.][0-9]+)?|10([.][0-9]+)? \(.+\)$"
+REQUIRED_JDK="17"
 RELEASE_FILE="/etc/redhat-release"
+OS_MAJOR_VERSION=$(grep -oE '[0-9]+' /etc/redhat-release | head -1)
 PSQL_MAX_VERSION=15
 IP_ADDRESS=$(hostname -I | awk '{print $1}') # export the address so it can also be used in the timeout command
 
@@ -34,7 +36,8 @@ E_UNSUPPORTED=128
 # Help function used in error messages and -h option
 usage() {
   echo ""
-  echo "Bootstrap OpenNMS basic setup on Centos9, RHEL 9 or Rocky based system."
+  echo "Bootstrap OpenNMS Horizon on RPM-based systems."
+  echo "  Supported systems: ${SUPPORTED_DISTROS}"
   echo ""
   echo "-h: Show this help"
 }
@@ -48,7 +51,8 @@ checkRequirements() {
   # Test if system is supported
   if ! grep -E "${REQUIRED_SYSTEMS}" "${RELEASE_FILE}" 1>>"${ERROR_LOG}" 2>>"${ERROR_LOG}"; then
     echo ""
-    echo "This is system is not a supported CentOS 9, RHEL 9 or Rocky 9 system."
+    echo "😔 This is system is not a supported."
+    echo "Supported systems are: ${SUPPORTED_DISTROS}"
     echo ""
     exit "${E_UNSUPPORTED}"
   fi
@@ -145,7 +149,7 @@ checkError() {
 }
 
 prepare() {
-  echo -n "👮 Authenticate with sudo                ... "
+  echo "👮 Authenticate with sudo                ... "
   sudo echo -n "" 2>>"${ERROR_LOG}"
   checkError "${?}"
 
@@ -223,8 +227,17 @@ EOF
 ####
 # Install OpenJDK Development kit
 installJdk() {
-  echo -n "📦 Install OpenJDK Development Kit       ... "
-  sudo dnf install -y ${REQUIRED_JDK} 1>>"${ERROR_LOG}" 2>>"${ERROR_LOG}"
+  echo "📦 Adding Adoptium Repo                  ... "
+  cat <<EOF | sudo tee /etc/yum.repos.d/adoptium.repo > /dev/null
+[Adoptium]
+name=Adoptium
+baseurl=https://packages.adoptium.net/artifactory/rpm/centos/\$releasever/\$basearch
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.adoptium.net/artifactory/api/gpg/key/public
+EOF
+  echo -n "📦 Install Temurin Java Development Kit  ... "
+  sudo dnf -y install temurin-"${REQUIRED_JDK}"-jdk 1>>"${ERROR_LOG}" 2>>"${ERROR_LOG}"
   checkError "${?}"
 }
 
@@ -232,10 +245,7 @@ installJdk() {
 # Install the PostgreSQL database
 installPostgres() {
   echo "📦 Add PostgreSQL repository             ... "
-  sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-  checkError "${?}"
-  echo -n "📦 Disable the built-in PostgreSQL       ... "
-  sudo dnf -qy module disable postgresql
+  sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-${OS_MAJOR_VERSION}-x86_64/pgdg-redhat-repo-latest.noarch.rpm
   checkError "${?}"
   echo -n "📦 Install PostgreSQL ${PSQL_MAX_VERSION} database        ... "
   sudo dnf install -y postgresql${PSQL_MAX_VERSION}-server 1>>"${ERROR_LOG}" 2>>"${ERROR_LOG}"
@@ -246,8 +256,8 @@ installPostgres() {
 # Install OpenNMS rpm repository for specific release
 installOnmsRepo() {
   echo "📦 Install OpenNMS Repository            ... "
-  curl -1sLf 'https://packages.opennms.com/public/stable/setup.rpm.sh' | sudo -E bash
-  curl -1sLf 'https://packages.opennms.com/public/common/setup.rpm.sh' | sudo -E bash
+  sudo dnf -y install https://yum.opennms.org/repofiles/opennms-repo-stable-rhel9.noarch.rpm
+  sudo sed -i 's/gpgcheck=1/gpgcheck=0/g' /etc/yum.repos.d/opennms-repo-stable-rhel9.repo
 }
 
 ####
@@ -385,7 +395,7 @@ lockdownDbUser() {
 # Disable the repo and lock the versions. 
 disableRepo() {
   echo -n "👮 Disabling autoupdates                 ... "
-  sudo dnf config-manager --disable opennms-common opennms-stable
+  sudo dnf config-manager --disable opennms-repo-stable-*
   checkError "${?}"
 }
 
