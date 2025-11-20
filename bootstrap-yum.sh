@@ -19,9 +19,11 @@ RED="\e[31m"
 GREEN="\e[32m"
 YELLOW="\e[33m"
 ENDCOLOR="\e[0m"
-REQUIRED_SYSTEMS="CentOS.*10"
+SUPPORTED_DISTROS="RHEL 9/10, CentOS 9/10, Rocky 9/10, Alma 9/10"
+REQUIRED_SYSTEMS="^(Red Hat Enterprise Linux|Rocky Linux|CentOS Stream|AlmaLinux) release 9([.][0-9]+)?|10([.][0-9]+)? \(.+\)$"
 REQUIRED_JDK="17"
 RELEASE_FILE="/etc/redhat-release"
+OS_MAJOR_VERSION=$(grep -oE '[0-9]+' /etc/redhat-release | head -1)
 PSQL_MAX_VERSION=15
 IP_ADDRESS=$(hostname -I | awk '{print $1}') # export the address so it can also be used in the timeout command
 
@@ -34,7 +36,8 @@ E_UNSUPPORTED=128
 # Help function used in error messages and -h option
 usage() {
   echo ""
-  echo "Bootstrap OpenNMS basic setup on Centos9, RHEL 9 or Rocky based system."
+  echo "Bootstrap OpenNMS Horizon on RPM-based systems."
+  echo "  Supported systems: ${SUPPORTED_DISTROS}"
   echo ""
   echo "-h: Show this help"
 }
@@ -48,7 +51,8 @@ checkRequirements() {
   # Test if system is supported
   if ! grep -E "${REQUIRED_SYSTEMS}" "${RELEASE_FILE}" 1>>"${ERROR_LOG}" 2>>"${ERROR_LOG}"; then
     echo ""
-    echo "This is system is not a supported CentOS 9, RHEL 9 or Rocky 9 system."
+    echo "😔 This is system is not a supported."
+    echo "Supported systems are: ${SUPPORTED_DISTROS}"
     echo ""
     exit "${E_UNSUPPORTED}"
   fi
@@ -145,7 +149,7 @@ checkError() {
 }
 
 prepare() {
-  echo -n "👮 Authenticate with sudo                ... "
+  echo "👮 Authenticate with sudo                ... "
   sudo echo -n "" 2>>"${ERROR_LOG}"
   checkError "${?}"
 
@@ -223,15 +227,15 @@ EOF
 ####
 # Install OpenJDK Development kit
 installJdk() {
-  echo -n "📦 Adding Adoptium Repo               ... "
+  echo "📦 Adding Adoptium Repo                  ... "
   cat <<EOF | sudo tee /etc/yum.repos.d/adoptium.repo > /dev/null
-  [Adoptium]
-  name=Adoptium
-  baseurl=https://packages.adoptium.net/artifactory/rpm/${DISTRIBUTION_NAME:-$(. /etc/os-release; echo $ID)}/\$releasever/\$basearch
-  enabled=1
-  gpgcheck=1
-  gpgkey=https://packages.adoptium.net/artifactory/api/gpg/key/public
-  EOF
+[Adoptium]
+name=Adoptium
+baseurl=https://packages.adoptium.net/artifactory/rpm/centos/\$releasever/\$basearch
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.adoptium.net/artifactory/api/gpg/key/public
+EOF
   echo -n "📦 Install Temurin Java Development Kit  ... "
   sudo dnf -y install temurin-"${REQUIRED_JDK}"-jdk 1>>"${ERROR_LOG}" 2>>"${ERROR_LOG}"
   checkError "${?}"
@@ -241,7 +245,7 @@ installJdk() {
 # Install the PostgreSQL database
 installPostgres() {
   echo "📦 Add PostgreSQL repository             ... "
-  sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+  sudo dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-${OS_MAJOR_VERSION}-x86_64/pgdg-redhat-repo-latest.noarch.rpm
   checkError "${?}"
   echo -n "📦 Install PostgreSQL ${PSQL_MAX_VERSION} database        ... "
   sudo dnf install -y postgresql${PSQL_MAX_VERSION}-server 1>>"${ERROR_LOG}" 2>>"${ERROR_LOG}"
@@ -260,7 +264,7 @@ installOnmsRepo() {
 # Install the OpenNMS application from rpm repository
 installOnmsApp() {
   echo -n "📦 Install OpenNMS Horizon packages      ... "
-  sudo dnf -y install opennms  1>>"${ERROR_LOG}" 2>>${ERROR_LOG}
+  sudo dnf -y install rrdtool jrrd2 jicmp jicmp6 opennms-core opennms-webapp-jetty opennms-webapp-hawtio 1>>"${ERROR_LOG}" 2>>${ERROR_LOG}
   sudo -u opennms "${OPENNMS_HOME}"/bin/runjava -s 1>>"${ERROR_LOG}" 2>>${ERROR_LOG}
   checkError "${?}"
 }
@@ -437,4 +441,3 @@ echo "Select in the main navigation \"Admin\" and go to \"Change Password\""
 echo ""
 echo "🦄 Thank you for computing with us. ✨"
 echo ""
-
