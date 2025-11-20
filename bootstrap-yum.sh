@@ -232,7 +232,7 @@ installJdk() {
   gpgcheck=1
   gpgkey=https://packages.adoptium.net/artifactory/api/gpg/key/public
   EOF
-  echo -n "📦 Install OpenJDK Development Kit       ... "
+  echo -n "📦 Install Temurin Java Development Kit  ... "
   sudo dnf -y install temurin-"${REQUIRED_JDK}"-jdk 1>>"${ERROR_LOG}" 2>>"${ERROR_LOG}"
   checkError "${?}"
 }
